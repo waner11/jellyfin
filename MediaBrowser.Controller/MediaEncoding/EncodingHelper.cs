@@ -173,7 +173,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             _pathManager = pathManager;
         }
 
-        private enum DynamicHdrMetadataRemovalPlan
+        public enum DynamicHdrMetadataRemovalPlan
         {
             None,
             RemoveDovi,
@@ -1382,6 +1382,14 @@ namespace MediaBrowser.Controller.MediaEncoding
                 return DynamicHdrMetadataRemovalPlan.None;
             }
 
+            // Treat Dolby Vision profile 8 with HDR10 fallback as DOVI that should be removed
+            // This forces removal of DV metadata (so the client/Firestick will see HDR10 only).
+            // Only apply this special-case for Fire TV / Firestick clients to avoid affecting other clients.
+            if (videoStream.DvProfile == 8 && videoStream.VideoRangeType == VideoRangeType.DOVIWithHDR10 && IsFireTvClient(state))
+            {
+                return DynamicHdrMetadataRemovalPlan.RemoveDovi;
+            }
+
             var requestedRangeTypes = state.GetRequestedRangeTypes(state.VideoStream.Codec);
             if (requestedRangeTypes.Length == 0)
             {
@@ -1418,6 +1426,40 @@ namespace MediaBrowser.Controller.MediaEncoding
             // If the client is a Dolby Vision Player, remove the HDR10+ metadata to avoid playback issues
             shouldRemoveHdr10Plus = shouldRemoveHdr10Plus || (requestHasDOVI && videoStream.VideoRangeType == VideoRangeType.DOVIWithHDR10Plus);
             return shouldRemoveHdr10Plus ? DynamicHdrMetadataRemovalPlan.RemoveHdr10Plus : DynamicHdrMetadataRemovalPlan.None;
+        }
+
+        // Detect Fire TV / Firestick clients from the request headers.
+        private static bool IsFireTvClient(EncodingJobInfo state)
+        {
+            if (state?.RemoteHttpHeaders is null)
+            {
+                return false;
+            }
+
+            if (state.RemoteHttpHeaders.TryGetValue("User-Agent", out var ua) && !string.IsNullOrEmpty(ua))
+            {
+                // Common identifiers for Amazon Fire TV / Firestick user agents
+                if (ua.Contains("fire tv", StringComparison.OrdinalIgnoreCase)
+                    || ua.Contains("firetv", StringComparison.OrdinalIgnoreCase)
+                    || ua.Contains("fireos", StringComparison.OrdinalIgnoreCase)
+                    || ua.Contains("aft", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        // Public helpers used by unit tests to exercise private logic.
+        public static bool TestableIsFireTvClient(EncodingJobInfo state)
+        {
+            return IsFireTvClient(state);
+        }
+
+        public static DynamicHdrMetadataRemovalPlan TestableShouldRemoveDynamicHdrMetadata(EncodingJobInfo state)
+        {
+            return ShouldRemoveDynamicHdrMetadata(state);
         }
 
         private bool CanEncoderRemoveDynamicHdrMetadata(DynamicHdrMetadataRemovalPlan plan, MediaStream videoStream)
