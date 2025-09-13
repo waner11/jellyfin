@@ -1382,10 +1382,11 @@ namespace MediaBrowser.Controller.MediaEncoding
                 return DynamicHdrMetadataRemovalPlan.None;
             }
 
-            // Treat Dolby Vision profile 8 with HDR10 fallback as DOVI that should be removed
+            // Treat Dolby Vision profile 8 and 7 with HDR10 fallback as DOVI that should be removed
             // This forces removal of DV metadata (so the client/Firestick will see HDR10 only).
             // Only apply this special-case for Fire TV / Firestick clients to avoid affecting other clients.
-            if (videoStream.DvProfile == 8 && videoStream.VideoRangeType == VideoRangeType.DOVIWithHDR10 && IsFireTvClient(state))
+            var hasDvProfile = videoStream.DvProfile == 8 || videoStream.DvProfile == 7;
+            if (hasDvProfile && videoStream.VideoRangeType == VideoRangeType.DOVIWithHDR10 && IsFireTvClient(state))
             {
                 return DynamicHdrMetadataRemovalPlan.RemoveDovi;
             }
