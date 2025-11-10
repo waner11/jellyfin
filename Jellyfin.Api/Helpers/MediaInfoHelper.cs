@@ -202,6 +202,14 @@ public class MediaInfoHelper
             AllowVideoStreamCopy = allowVideoStreamCopy,
             AlwaysBurnInSubtitleWhenTranscoding = alwaysBurnInSubtitleWhenTranscoding,
         };
+        options.IsFireTvClient = IsFireTvDevice(options.DeviceId, profile);
+        if (options.IsFireTvClient)
+        {
+            _logger.LogInformation(
+                "Fire TV capabilities detected. DeviceId={DeviceId}, Profile={ProfileName}",
+                options.DeviceId ?? "unknown",
+                profile.Name ?? "unknown");
+        }
 
         if (string.Equals(mediaSourceId, mediaSource.Id, StringComparison.OrdinalIgnoreCase))
         {
@@ -490,6 +498,46 @@ public class MediaInfoHelper
                 }
             }
         }
+    }
+
+    private bool IsFireTvDevice(string? deviceId, DeviceProfile profile)
+    {
+        if (!string.IsNullOrWhiteSpace(deviceId) && MatchesFireToken(deviceId))
+        {
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(deviceId))
+        {
+            var deviceInfo = _deviceManager.GetDevice(deviceId);
+            if (deviceInfo is not null)
+            {
+                if (MatchesFireToken(deviceInfo.Name)
+                    || MatchesFireToken(deviceInfo.CustomName)
+                    || MatchesFireToken(deviceInfo.AppName))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return MatchesFireToken(profile.Name);
+    }
+
+    private static bool MatchesFireToken(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var token = value.Trim();
+        return token.Contains("fire tv", StringComparison.OrdinalIgnoreCase)
+            || token.Contains("firetv", StringComparison.OrdinalIgnoreCase)
+            || token.Contains("fire stick", StringComparison.OrdinalIgnoreCase)
+            || token.Contains("firestick", StringComparison.OrdinalIgnoreCase)
+            || token.Contains("amazon fire", StringComparison.OrdinalIgnoreCase)
+            || token.StartsWith("aft", StringComparison.OrdinalIgnoreCase);
     }
 
     private int? GetMaxBitrate(int? clientMaxBitrate, User user, IPAddress ipAddress)

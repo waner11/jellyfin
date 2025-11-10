@@ -727,6 +727,16 @@ namespace MediaBrowser.Model.Dlna
                 isEligibleForDirectStream);
 
             DirectPlayProfile? directPlayProfile = null;
+            var requiresFireTvFallback = ShouldUseFireTvDolbyVisionFallback(options, videoStream);
+            if (requiresFireTvFallback && videoStream is not null)
+            {
+                _logger.LogInformation(
+                    "Fire TV fallback active for item {ItemPath} (range={VideoRangeType}, profile={Profile}). Dolby Vision metadata will be removed.",
+                    item.Path ?? "unknown",
+                    videoStream.VideoRangeType,
+                    videoStream.Profile ?? "unknown");
+            }
+
             if (isEligibleForDirectPlay || isEligibleForDirectStream)
             {
                 // See if it can be direct played
@@ -742,6 +752,12 @@ namespace MediaBrowser.Model.Dlna
                     var videoCodec = videoStream?.Codec;
                     playlistItem.VideoCodecs = videoCodec is null ? [] : [videoCodec];
 
+                    if (directPlay == PlayMethod.DirectPlay && requiresFireTvFallback)
+                    {
+                        playlistItem.PlayMethod = PlayMethod.DirectStream;
+                        directPlay = PlayMethod.DirectStream;
+                    }
+
                     if (directPlay == PlayMethod.DirectPlay)
                     {
                         playlistItem.SubProtocol = MediaStreamProtocol.http;
@@ -754,7 +770,8 @@ namespace MediaBrowser.Model.Dlna
                             playlistItem.AudioCodecs = audioCodec is null ? [] : [audioCodec];
                         }
                     }
-                    else if (directPlay == PlayMethod.DirectStream)
+
+                    if (directPlay == PlayMethod.DirectStream)
                     {
                         playlistItem.AudioStreamIndex = audioStream?.Index;
                         if (audioStream is not null)
@@ -1029,13 +1046,21 @@ namespace MediaBrowser.Model.Dlna
                 }
             }
 
+            var useFireTvDvFallback = ShouldUseFireTvDolbyVisionFallback(options, videoStream);
+
+            if (useFireTvDvFallback && qualifier is not null)
+            {
+                playlistItem.SetOption(qualifier, "rangetype", VideoRangeType.HDR10.ToString());
+                playlistItem.SetOption("firetv", "stripdovi", "true");
+            }
+
             int? width = videoStream?.Width;
             int? height = videoStream?.Height;
             int? bitDepth = videoStream?.BitDepth;
             int? videoBitrate = videoStream?.BitRate;
             double? videoLevel = videoStream?.Level;
             string? videoProfile = videoStream?.Profile;
-            VideoRangeType? videoRangeType = videoStream?.VideoRangeType;
+            VideoRangeType? videoRangeType = GetEffectiveVideoRangeType(videoStream, useFireTvDvFallback);
             float videoFramerate = videoStream is null ? 0 : videoStream.ReferenceFrameRate ?? 0;
             bool? isAnamorphic = videoStream?.IsAnamorphic;
             bool? isInterlaced = videoStream?.IsInterlaced;
@@ -2228,6 +2253,36 @@ namespace MediaBrowser.Model.Dlna
             return true;
         }
 
+        private static VideoRangeType? GetEffectiveVideoRangeType(MediaStream? videoStream, bool useFireTvFallback)
+        {
+            if (videoStream is null)
+            {
+                return null;
+            }
+
+            return useFireTvFallback ? VideoRangeType.HDR10 : videoStream.VideoRangeType;
+        }
+
+        private static bool ShouldUseFireTvDolbyVisionFallback(MediaOptions options, MediaStream? videoStream)
+        {
+            if (!options.IsFireTvClient || videoStream is null)
+            {
+                return false;
+            }
+
+            return HasDolbyVisionHdrFallback(videoStream.VideoRangeType);
+        }
+
+        private static bool HasDolbyVisionHdrFallback(VideoRangeType? videoRangeType)
+        {
+            return videoRangeType is VideoRangeType.DOVIWithHDR10
+                or VideoRangeType.DOVIWithHDR10Plus
+                or VideoRangeType.DOVIWithHLG
+                or VideoRangeType.DOVIWithSDR
+                or VideoRangeType.DOVIWithEL
+                or VideoRangeType.DOVIWithELHDR10Plus;
+        }
+
         private static bool IsAudioDirectStreamSupported(DirectPlayProfile profile, MediaSourceInfo item, MediaStream audioStream)
         {
             // Check container type, this should NOT be supported
@@ -2267,8 +2322,9 @@ namespace MediaBrowser.Model.Dlna
         /// <param name="conditions">Profile conditions.</param>
         /// <param name="mediaSource">Media source.</param>
         /// <param name="videoStream">Video stream.</param>
+        /// <param name="overrideVideoRangeType">Override video range type.</param>
         /// <returns>Failed profile conditions.</returns>
-        private IEnumerable<ProfileCondition> CheckVideoConditions(ProfileCondition[] conditions, MediaSourceInfo mediaSource, MediaStream? videoStream)
+        private IEnumerable<ProfileCondition> CheckVideoConditions(ProfileCondition[] conditions, MediaSourceInfo mediaSource, MediaStream? videoStream, VideoRangeType? overrideVideoRangeType = null)
         {
             int? width = videoStream?.Width;
             int? height = videoStream?.Height;
@@ -2276,7 +2332,7 @@ namespace MediaBrowser.Model.Dlna
             int? videoBitrate = videoStream?.BitRate;
             double? videoLevel = videoStream?.Level;
             string? videoProfile = videoStream?.Profile;
-            VideoRangeType? videoRangeType = videoStream?.VideoRangeType;
+            VideoRangeType? videoRangeType = overrideVideoRangeType ?? videoStream?.VideoRangeType;
             float videoFramerate = videoStream is null ? 0 : videoStream.ReferenceFrameRate ?? 0;
             bool? isAnamorphic = videoStream?.IsAnamorphic;
             bool? isInterlaced = videoStream?.IsInterlaced;
@@ -2305,6 +2361,8 @@ namespace MediaBrowser.Model.Dlna
         private TranscodeReason GetCompatibilityContainer(MediaOptions options, MediaSourceInfo mediaSource, string container, MediaStream? videoStream)
         {
             var profile = options.Profile;
+            var useFireTvDvFallback = ShouldUseFireTvDolbyVisionFallback(options, videoStream);
+            var effectiveVideoRangeType = GetEffectiveVideoRangeType(videoStream, useFireTvDvFallback);
 
             var failures = AggregateFailureConditions(
                 mediaSource,
@@ -2312,7 +2370,7 @@ namespace MediaBrowser.Model.Dlna
                 "VideoCodecProfile",
                 profile.ContainerProfiles
                     .Where(containerProfile => containerProfile.Type == DlnaProfileType.Video && containerProfile.ContainsContainer(container))
-                    .SelectMany(containerProfile => CheckVideoConditions(containerProfile.Conditions, mediaSource, videoStream)));
+                    .SelectMany(containerProfile => CheckVideoConditions(containerProfile.Conditions, mediaSource, videoStream, effectiveVideoRangeType)));
 
             return failures;
         }
@@ -2330,6 +2388,8 @@ namespace MediaBrowser.Model.Dlna
             var profile = options.Profile;
 
             string videoCodec = videoStream.Codec;
+            var useFireTvDvFallback = ShouldUseFireTvDolbyVisionFallback(options, videoStream);
+            var effectiveVideoRangeType = GetEffectiveVideoRangeType(videoStream, useFireTvDvFallback);
 
             var failures = AggregateFailureConditions(
                 mediaSource,
@@ -2338,8 +2398,8 @@ namespace MediaBrowser.Model.Dlna
                 profile.CodecProfiles
                     .Where(codecProfile => codecProfile.Type == CodecType.Video &&
                         codecProfile.ContainsAnyCodec(videoCodec, container) &&
-                        !CheckVideoConditions(codecProfile.ApplyConditions, mediaSource, videoStream).Any())
-                    .SelectMany(codecProfile => CheckVideoConditions(codecProfile.Conditions, mediaSource, videoStream)));
+                        !CheckVideoConditions(codecProfile.ApplyConditions, mediaSource, videoStream, effectiveVideoRangeType).Any())
+                    .SelectMany(codecProfile => CheckVideoConditions(codecProfile.Conditions, mediaSource, videoStream, effectiveVideoRangeType)));
 
             return failures;
         }

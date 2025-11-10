@@ -103,6 +103,12 @@ namespace MediaBrowser.Model.Dlna
         public int? AudioTranscodingBitrate { get; set; }
 
         /// <summary>
+        /// Gets or sets a value indicating whether the requesting client is an Amazon Fire TV device.
+        /// Used to scope Fire TV-specific compatibility quirks without affecting other platforms.
+        /// </summary>
+        public bool IsFireTvClient { get; set; }
+
+        /// <summary>
         /// Gets or sets an override for the audio stream index.
         /// </summary>
         public int? AudioStreamIndex { get; set; }

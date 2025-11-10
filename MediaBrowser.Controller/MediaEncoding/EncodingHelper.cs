@@ -1388,6 +1388,12 @@ namespace MediaBrowser.Controller.MediaEncoding
                 return DynamicHdrMetadataRemovalPlan.None;
             }
 
+            var forceFireTvDoviStrip = string.Equals(state.BaseRequest?.GetOption("firetv", "stripdovi"), "true", StringComparison.OrdinalIgnoreCase);
+            if (forceFireTvDoviStrip && IsDoviWithHdr10Bl(videoStream))
+            {
+                return DynamicHdrMetadataRemovalPlan.RemoveDovi;
+            }
+
             var requestHasHDR10 = requestedRangeTypes.Contains(VideoRangeType.HDR10.ToString(), StringComparison.OrdinalIgnoreCase);
             var requestHasDOVI = requestedRangeTypes.Contains(VideoRangeType.DOVI.ToString(), StringComparison.OrdinalIgnoreCase);
             var requestHasDOVIwithEL = requestedRangeTypes.Contains(VideoRangeType.DOVIWithEL.ToString(), StringComparison.OrdinalIgnoreCase);

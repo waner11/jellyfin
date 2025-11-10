@@ -216,6 +216,46 @@ namespace Jellyfin.Model.Tests
             BuildVideoItemSimpleTest(options, playMethod, why, transcodeMode, transcodeProtocol);
         }
 
+        [Fact]
+        public async Task VerifyFireTvProfile8FallsBackToHdr10()
+        {
+            var options = await GetMediaOptions("FireTVExoPlayer", "mkv-dvhe.08-eac3-15200k");
+            options.IsFireTvClient = true;
+
+            var builder = GetStreamBuilder();
+            var streamInfo = builder.GetOptimalVideoStream(options);
+            Assert.NotNull(streamInfo);
+            Assert.Equal(PlayMethod.DirectStream, streamInfo!.PlayMethod);
+            Assert.Equal("HDR10", streamInfo.GetOption("hevc", "rangetype"));
+            Assert.Equal("true", streamInfo.GetOption("firetv", "stripdovi"));
+        }
+
+        [Fact]
+        public async Task VerifyFireTvProfile7FallsBackToHdr10()
+        {
+            var options = await GetMediaOptions("FireTVExoPlayer", "mkv-dvhe.07-el-eac3-28000k");
+            options.IsFireTvClient = true;
+
+            var builder = GetStreamBuilder();
+            var streamInfo = builder.GetOptimalVideoStream(options);
+            Assert.NotNull(streamInfo);
+            Assert.Equal(PlayMethod.DirectStream, streamInfo!.PlayMethod);
+            Assert.Equal("HDR10", streamInfo.GetOption("hevc", "rangetype"));
+            Assert.Equal("true", streamInfo.GetOption("firetv", "stripdovi"));
+        }
+
+        [Fact]
+        public async Task NonFireTvDoesNotStripDolbyVision()
+        {
+            var options = await GetMediaOptions("AndroidTVExoPlayer", "mkv-dvhe.08-eac3-15200k");
+
+            var builder = GetStreamBuilder();
+            var streamInfo = builder.GetOptimalVideoStream(options);
+            Assert.NotNull(streamInfo);
+            Assert.NotEqual("true", streamInfo!.GetOption("firetv", "stripdovi"));
+            Assert.Equal(PlayMethod.DirectPlay, streamInfo.PlayMethod);
+        }
+
         [Theory]
         // Chrome
         [InlineData("Chrome", "mp4-h264-aac-vtt-2600k", PlayMethod.DirectPlay)] // #6450
