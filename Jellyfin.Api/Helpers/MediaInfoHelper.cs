@@ -203,13 +203,11 @@ public class MediaInfoHelper
             AlwaysBurnInSubtitleWhenTranscoding = alwaysBurnInSubtitleWhenTranscoding,
         };
         options.IsFireTvClient = IsFireTvDevice(options.DeviceId, profile);
-        if (options.IsFireTvClient)
-        {
-            _logger.LogInformation(
-                "Fire TV capabilities detected. DeviceId={DeviceId}, Profile={ProfileName}",
+        _logger.LogInformation(
+                "Detecting Fire TV capabilities. DeviceId={DeviceId}, Profile={ProfileName}, IsFireTvClient={IsFireTvClient}",
                 options.DeviceId ?? "unknown",
-                profile.Name ?? "unknown");
-        }
+                profile.Name ?? "unknown",
+                options.IsFireTvClient);
 
         if (string.Equals(mediaSourceId, mediaSource.Id, StringComparison.OrdinalIgnoreCase))
         {
